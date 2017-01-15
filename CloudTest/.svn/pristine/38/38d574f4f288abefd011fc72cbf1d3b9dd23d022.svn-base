@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry exported="true" kind="lib" path="lib/fastjson-1.2.14.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/commons-lang-2.4.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/bugly_crash_release.jar"/>
+	<classpathentry kind="lib" path="lib/commons-io-2.5.jar"/>
+	<classpathentry kind="lib" path="lib/tbs_sdk_thirdapp_v2.1.2.1096_36511_withdownload_obfs_20160727_105857.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/android-support-v7-appcompat.jar"/>
+	<classpathentry kind="lib" path="lib/android-support-v4.jar"/>
+	<classpathentry kind="lib" path="lib/support-annotations-21.0.0-rc1.jar"/>
+	<classpathentry kind="lib" path="lib/gson-2.2.4.jar"/>
+	<classpathentry exported="true" kind="con" path="com.android.ide.eclipse.adt.LIBRARIES"/>
+	<classpathentry exported="true" kind="con" path="com.android.ide.eclipse.adt.DEPENDENCIES"/>
+	<classpathentry exported="true" kind="lib" path="lib/xutils3.3.36.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/logger-1.15.jar"/>
+	<classpathentry kind="lib" path="lib/uiautomator.jar"/>
+	<classpathentry kind="lib" path="lib/appautorun.jar"/>
+	<classpathentry kind="lib" path="lib/eventbus-3.0.0-beta1.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/android-support-v7-recyclerview.jar"/>
+	<classpathentry kind="src" path="test"/>
+	<classpathentry kind="con" path="com.android.ide.eclipse.adt.ANDROID_FRAMEWORK"/>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="src" path="gen"/>
+	<classpathentry kind="output" path="bin/classes"/>
+</classpath>

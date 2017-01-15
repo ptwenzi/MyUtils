@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- headtitle背景颜色 -->
+    <color name="fontcolor">#333333</color>
+       <color name="font_gray">#999999</color>
+   <color name="white">#ffffff</color>
+      <color name="tab_select">#eeeeee</color>
+           <color name="font_blue">#0085d0</color>
+</resources>

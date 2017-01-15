@@ -1,0 +1,760 @@
+package com.newland.cloudtest.service;
+
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.UUID;
+
+import org.apache.commons.lang.StringUtils;
+import org.xutils.x;
+import org.xutils.common.Callback;
+import org.xutils.ex.DbException;
+
+import android.R.string;
+import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Environment;
+import android.os.IBinder;
+import android.os.PowerManager;
+import android.os.PowerManager.WakeLock;
+import android.telephony.PhoneStateListener;
+import android.telephony.SignalStrength;
+import android.telephony.TelephonyManager;
+import android.util.Log;
+import android.widget.Toast;
+
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.newland.cloudtest.bean.ConfigDb;
+import com.newland.cloudtest.bean.FlowBean;
+import com.newland.cloudtest.bean.MyXutilsRequestParams;
+import com.newland.cloudtest.bean.PInfo;
+import com.newland.cloudtest.bean.RequestData;
+import com.newland.cloudtest.bean.ResponeData;
+import com.newland.cloudtest.bean.Rphone;
+import com.newland.cloudtest.util.Contant;
+import com.newland.cloudtest.util.DateUtil;
+import com.newland.cloudtest.util.DownloadUtils;
+import com.newland.cloudtest.util.FileHelper;
+import com.newland.cloudtest.util.HttpInterfaceHelper;
+import com.newland.cloudtest.util.SharedPreferencesUtils;
+import com.newland.cloudtest.util.StringUtil;
+import com.newland.cloudtest.util.SystemUtils;
+import com.orhanobut.logger.Logger;
+
+/**
+ * 获取手机信息
+ * 
+ * @author TongLee
+ *
+ */
+public class PhoneInfoService extends Service {
+	// public ServiceBinder mBinder = new ServiceBinder(); /* 数据通信的桥梁 */
+	public MyReceiver myReceiver; // 主接受广播
+	public BatteryReceiver batteryReceiver = new BatteryReceiver();
+	public static String Action = "com.newland.PhoneInfoBroadcast";
+	private int battery;// 剩余电量
+	private int batteryVoltage;// 电压
+	private int batteryTempl;// 电池温度
+	private String networkType;// 网络状态
+	TelephonyManager tel;
+	private int netWorkStrength;// 网络信号
+	private String ApkModel = android.os.Build.VERSION.RELEASE; // apk版本
+	private String phoneModel = android.os.Build.MODEL; // 手机型号
+	private String brand = android.os.Build.BRAND;
+	private String simOperatorName;// 运营商名字
+	private int ramUseRate;// 内存使用率
+	private int romUseRate;// 存储使用率
+	private int CPUUseRate;// CPU使用率
+	private String CpuName;// cpu名字
+	private Long diskInfo;// 存储大小
+	private Long memoryInfo;// 内存大小
+	Timer updateConfigRatetaskTimer = new Timer();
+	Timer uploadTimer = new Timer(); //上传信息
+	 public boolean isStop = false;
+	 
+	 WakeLock mWakeLock;// 电源锁
+	// 网络状态监听
+	private MyPhoneNetWorkStateListener MyPhoneNetWorkStateListener = new MyPhoneNetWorkStateListener();
+
+	@Override
+	public IBinder onBind(Intent arg0) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void onCreate() {
+
+		Logger.i("PhoneInfoService Service Create...");
+		super.onCreate();
+		isStop= false;
+		myReceiver = new MyReceiver();
+		registerReceiver(myReceiver, new IntentFilter(Action));
+		IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+		registerReceiver(batteryReceiver, filter);// 注册BroadcastReceiver
+		// 监听网络状态信号
+		tel = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+		tel.listen(MyPhoneNetWorkStateListener,	PhoneStateListener.LISTEN_SIGNAL_STRENGTHS);
+		Logger.v(networkType);
+		Logger.v(brand);
+		// SystemUtils.getInstalledApps(false,this);
+		initInfo();
+		saveLog();//保存日志
+		monitor4GFlow();
+		uploadPhoneThread();
+		updateThread();//自动检查更新
+		acquireWakeLock();
+	}
+
+	/**
+	 * 更新配置表
+	 */
+	
+	TimerTask UpdateConfigRatetask = new TimerTask() {
+
+		@Override
+		public void run() {
+			getUpdateRate();
+		}
+	};
+	/**
+	 * 上传信息
+	 */
+	
+	TimerTask uploadTask = new TimerTask() {
+
+		@Override
+		public void run() {
+			uploadPhoneInfo();
+		}
+	};
+	
+	
+	/**
+	 * 监控当日4g流量消耗  12:00上报一次
+	 *
+	 */
+	private void monitor4GFlow()
+	{
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				while(!isStop)
+				{
+					//检查今日是否有记录起始日期
+					Date recordDate = new Date();
+					String recordDateStr = DateUtil.getDateNowString(recordDate);//获取记录开始时间
+					try {
+						FlowBean flowBean = SystemUtils.getDbManage().selector(FlowBean.class).where("recordTime","=",recordDateStr).findFirst();
+						if(flowBean == null)//说明今日没有记录起始，开始记录
+						{
+							flowBean = new FlowBean();
+							flowBean.setFlowBeanId(UUID.randomUUID().toString());
+							flowBean.setRecordTime(recordDateStr);
+							flowBean.setRecordStart(new Date());
+							flowBean.setUpflowStart(SystemUtils.get4GUploadFlow()<0?0:SystemUtils.get4GUploadFlow());
+							flowBean.setDownflowStart(SystemUtils.get4GDownFlow()<0?0:SystemUtils.get4GDownFlow());
+							SystemUtils.getDbManage().save(flowBean);
+							HttpInterfaceHelper.getInstance().upload4GDayFlow(getApplicationContext());
+							HttpInterfaceHelper.getInstance().clearLastDate();
+						}
+						else {//已经有今日数据了
+							flowBean.setRecordEnd(new Date());
+							flowBean.setUpflowStart(SystemUtils.get4GUploadFlow()<0?0:SystemUtils.get4GUploadFlow());
+							flowBean.setDownflowStart(SystemUtils.get4GDownFlow()<0?0:SystemUtils.get4GDownFlow());
+							SystemUtils.getDbManage().update(flowBean,null);  
+						}
+					} catch (DbException e) {
+						e.printStackTrace();
+					}
+					try {
+						Thread.sleep(1000*30);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				
+			}
+		}).start();
+		
+		
+	}
+	
+	
+	
+	
+	
+	private void updateThread()
+	{
+		
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				while (!isStop) {
+					
+					try {
+						isUpdateApk();
+						Thread.sleep(30*60*1000);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			
+				
+			}
+		}).start();
+	}
+	
+	
+	
+	/**
+	 * 上传手机信息
+	 */
+	private void uploadPhoneThread()
+	{
+//		new Thread(new Runnable() {
+//			
+//			@Override
+//			public void run() {
+//				
+//				
+//			}
+//		}).start();
+		new Thread(){
+			@SuppressWarnings("static-access")
+			public synchronized void run(){
+				while (!isStop) {
+					try {
+						this.sleep(5 * 60 *1000);
+						uploadPhoneInfo();
+						this.sleep(Contant.updatePhoneInfoRate);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		}.start();
+		
+		
+	}
+
+	/*
+	 * 获取刷新频率
+	 */
+	private void getUpdateRate() {
+		MyXutilsRequestParams params = new MyXutilsRequestParams("https://www.pgyer.com/");
+		params.setCharset("utf-8");
+		params.addBodyParameter("wd", "xUtils");
+		x.http().post(params, new Callback.CommonCallback<String>() {
+			@Override
+			public void onSuccess(String result) {
+				Logger.v(result);
+			}
+
+			@Override
+			public void onError(Throwable ex, boolean isOnCallback) {
+		
+				Logger.v(ex.getMessage());
+			}
+
+			@Override
+			public void onCancelled(CancelledException cex) {
+				Toast.makeText(x.app(), "cancelled", Toast.LENGTH_LONG).show();
+				Logger.v("cancelled");
+			}
+
+			@Override
+			public void onFinished() {
+
+			}
+		});
+	}
+	
+	/**
+	 * 上传手机信息
+	 */
+	private void uploadPhoneInfo()
+	{
+		
+		Rphone rphone = new Rphone();
+		rphone.setRphoneName(brand+" - "+phoneModel);
+		rphone.setModelName(phoneModel);
+		rphone.setBrandName(brand);
+		rphone.setImeiNumber(SystemUtils.getIMEI(getApplicationContext()));
+		rphone.setImsiNumber(SystemUtils.getImsiNumber(getApplicationContext()));
+		rphone.setOsName("Android");
+		rphone.setOsVersion(ApkModel);
+		rphone.setCpu(CpuName);
+		rphone.setRam(memoryInfo); 
+		rphone.setRom(diskInfo);
+		rphone.setCpuUse(CPUUseRate);
+		rphone.setRamUse(ramUseRate);
+		rphone.setRomUse(romUseRate);
+		rphone.setBatteryUse(battery);
+		rphone.setBatteryVoltage(batteryVoltage);
+		rphone.setBatteryTemp(batteryTempl);
+		rphone.setNetworkModel(networkType);
+		rphone.setDbm(netWorkStrength);
+		rphone.setScreenResolution(SharedPreferencesUtils.getConfigStr(getApplicationContext(), Contant.cachName, "density"));
+//		ArrayList<PInfo> list =  SystemUtils.getInstalledApps(false, this);
+	//	rphone.setAppDesc(JSON.toJSONString(list));
+		MyXutilsRequestParams params = new MyXutilsRequestParams(Contant.IP+"/rphone/upPhoneInfo");
+		params.setCharset("utf-8");
+		RequestData requestData = new RequestData();
+		requestData.setRequestTime(System.currentTimeMillis()+"");
+		HashMap<String, Object>map = new HashMap<String, Object>();
+		map.put("phone", rphone);
+		requestData.setData(map);
+		Logger.v(JSON.toJSONString(requestData));
+		String json = JSON.toJSONString(requestData);
+		params.addBodyParameter("data",JSON.toJSONString(requestData));
+		x.http().post(params, new Callback.CommonCallback<String>() {
+			@Override
+			public void onSuccess(String result) {
+				Logger.v(result);
+				SharedPreferencesUtils.setConfigStr(getApplicationContext(), Contant.cachName, "onlineStatue", "在线");
+				ResponeData responeData = JSON.parseObject(result, ResponeData.class);
+				if(responeData!= null && responeData.getData()!=null)
+				{
+					JSONObject jsonObject = JSON.parseObject(JSON.toJSONString(responeData.getData()));
+					int updatePhoneInfoRate  = jsonObject.getIntValue("updatePhoneInfoRate");
+					int task4GTimeOut  = jsonObject.getIntValue("task4GTimeOut");
+					int taskSmsTimeOut  = jsonObject.getIntValue("taskSmsTimeOut");
+					int taskAppTimeOut  = jsonObject.getIntValue("taskAppTimeOut");
+					int taskResultUploadTimeOut  = jsonObject.getIntValue("taskResultUploadTimeOut");
+					try {
+						SystemUtils.getDbManage().delete(ConfigDb.class);
+					} catch (DbException e1) {
+						e1.printStackTrace();
+					}
+					if(updatePhoneInfoRate!=0)
+					{
+						Contant.updatePhoneInfoRate = updatePhoneInfoRate;
+						ConfigDb configDb = new ConfigDb();
+						configDb.setKey("updatePhoneInfoRate");
+						configDb.setValue(updatePhoneInfoRate);
+						try {
+							SystemUtils.getDbManage().save(configDb);
+						} catch (DbException e) {
+							e.printStackTrace();
+						}
+					}
+					if(task4GTimeOut!=0)
+					{
+						Contant.task4GTimeOut = task4GTimeOut;
+						ConfigDb configDb = new ConfigDb();
+						configDb.setKey("task4GTimeOut");
+						configDb.setValue(task4GTimeOut);
+						try {
+							SystemUtils.getDbManage().save(configDb);
+						} catch (DbException e) {
+							e.printStackTrace();
+						}
+					}
+					if(taskSmsTimeOut!=0)
+					{
+						Contant.taskSmsTimeOut = taskSmsTimeOut;
+						ConfigDb configDb = new ConfigDb();
+						configDb.setKey("taskSmsTimeOut");
+						configDb.setValue(taskSmsTimeOut);
+						try {
+							SystemUtils.getDbManage().save(configDb);
+						} catch (DbException e) {
+							e.printStackTrace();
+						}
+					}
+					if(taskAppTimeOut!=0)
+					{
+						Contant.taskAppTimeOut = taskAppTimeOut;
+						ConfigDb configDb = new ConfigDb();
+						configDb.setKey("taskAppTimeOut");
+						configDb.setValue(taskAppTimeOut);
+						try {
+							SystemUtils.getDbManage().save(configDb);
+						} catch (DbException e) {
+							e.printStackTrace();
+						}
+					}
+					if(taskResultUploadTimeOut!=0)
+					{
+						Contant.taskResultUploadTimeOut = taskResultUploadTimeOut;
+						ConfigDb configDb = new ConfigDb();
+						configDb.setKey("taskResultUploadTimeOut");
+						configDb.setValue(taskResultUploadTimeOut);
+						try {
+							SystemUtils.getDbManage().save(configDb);
+						} catch (DbException e) {
+							e.printStackTrace();
+						}
+					}
+					
+					
+				}
+			}
+
+			@Override
+			public void onError(Throwable ex, boolean isOnCallback) {
+		
+				Logger.v(ex.getMessage());
+				SharedPreferencesUtils.setConfigStr(getApplicationContext(), Contant.cachName, "onlineStatue", "离线");
+			}
+
+			@Override
+			public void onCancelled(CancelledException cex) {
+				Toast.makeText(x.app(), "cancelled", Toast.LENGTH_LONG).show();
+				Logger.v("cancelled");
+			}
+
+			@Override
+			public void onFinished() {
+
+			}
+		});
+	}
+
+	private void initInfo() {
+		// 获取网络类型
+		networkType = SystemUtils.GetNetworkType(this);
+		CpuName = SystemUtils.getCpuName();
+		diskInfo = (Long)SystemUtils.getMemoryInfo(Environment.getDataDirectory(),
+				this).get("totalMemory");
+		memoryInfo = SystemUtils.getTotalRam(this);
+		try {
+			CPUUseRate = (int) Math.round(SystemUtils.getCPUPercent());
+			ramUseRate = SystemUtils.getRamUse(this);
+			romUseRate = SystemUtils.getRomUse(this);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	
+
+		
+		
+		
+	}
+	/** 检查数据库中是否有这个版本号，本地是否还有这个apk
+	 * @param getVersionCode 获取到的版本号 
+	 * @return
+	 */
+	private boolean checkUpdateApk(int getVersionCode){
+		String versionCode = SharedPreferencesUtils.getConfigStr(getApplicationContext(), Contant.cachName, "versionCode");
+		if (StringUtils.isEmpty(versionCode)){//如果本地没有versionCode，表示没有成功下载过，直接下载
+			return true;
+		}
+		if (!String.valueOf(getVersionCode).equalsIgnoreCase(versionCode)) {//如果上次下在成功版本号和服务器返回版本号不一致，直接下载
+			return true;
+		} else {
+			String apkName = SharedPreferencesUtils.getConfigStr(getApplicationContext(), Contant.cachName, "apkName");
+			if (StringUtils.isEmpty(apkName)){//如果本地没有apkName，表示没有成功下载过，直接下载
+				return true;
+			}
+			
+			if (!new File(apkName).exists()) {//如果上次下载的APK不存在，重新下载
+				return true;
+			}
+		}
+
+		return false;
+	}
+	
+	/**
+	 * 检查是否更新apk
+	 */
+	private  void isUpdateApk()
+	{
+		MyXutilsRequestParams params = new MyXutilsRequestParams(Contant.IP+"/appUpdate/getAppVersion");
+		params.setCharset("utf-8");
+		RequestData requestData = new RequestData();
+		Map<String, String>map = new HashMap<String, String>();
+		map.put("bizId", "1001");
+		requestData.setData(map);
+		requestData.setRequestTime(System.currentTimeMillis()+"");
+		params.addBodyParameter("data", JSON.toJSONString(requestData));
+		x.http().post(params, new Callback.CommonCallback<String>() {
+			@Override
+			public void onSuccess(String result) {
+				Logger.v(result);
+				ResponeData responeData = JSON.parseObject(result, ResponeData.class);
+				if(responeData != null && responeData.getCode()==0)
+				{
+					//查看是否有数据
+					if(responeData.getData() !=null)
+					{
+						JSONObject jsonObject =  JSON.parseObject(JSON.toJSONString(responeData.getData()));
+						jsonObject = jsonObject.getJSONObject("appUpdate");
+						if(jsonObject != null)
+						{
+							//比对本地版本
+							int versionCode =  jsonObject.getIntValue("versionCode");
+							int localVersionCode = SystemUtils.getAppVersionCode(getApplicationContext());
+							if (versionCode> localVersionCode) {//有更新
+								if(checkUpdateApk(versionCode)){
+									DownloadUtils.getInstance().downloadfileWithNotifycation(Contant.IP+"/"+jsonObject.getString("downPath"), getApplicationContext(),false,null,versionCode);
+									
+								}
+							}
+						}
+					}
+				}
+			}
+
+			@Override
+			public void onError(Throwable ex, boolean isOnCallback) {
+		
+				Logger.v(ex.getMessage());
+			}
+
+			@Override
+			public void onCancelled(CancelledException cex) {
+				Toast.makeText(x.app(), "cancelled", Toast.LENGTH_LONG).show();
+				Logger.v("cancelled");
+			}
+
+			@Override
+			public void onFinished() {
+
+			}
+		});
+	}
+	
+
+	@Override
+	public int onStartCommand(Intent intent, int flags, int startId) {
+//		Toast.makeText(PhoneInfoService.this,
+//				"PhoneInfoService Service StartCommand", Toast.LENGTH_SHORT)
+//				.show();
+		return super.onStartCommand(intent, flags, startId);
+	}
+
+	@Override
+	public void onDestroy() {
+
+		Logger.v("PhoneInfoService Service Destroy");
+		unregisterReceiver(myReceiver);
+		unregisterReceiver(batteryReceiver);
+		updateConfigRatetaskTimer.cancel();
+		uploadTimer.cancel();
+		isStop = true;
+//		Intent intent = new Intent(this,PhoneInfoService.class);
+//		startService(intent);
+		releaseWakeLock();
+		
+	}
+
+	/* 第一种模式通信：Binder */
+	// public class ServiceBinder extends Binder {
+	//
+	// public void startDownload() throws InterruptedException {
+	// /* 模拟下载，休眠2秒 */
+	// // Toast.makeText( PhoneInfoService.this, "模拟下载2秒钟,开始下载...",
+	// // Toast.LENGTH_SHORT).show();
+	// // Thread.sleep(2);
+	// // Toast.makeText( PhoneInfoService.this, "下载结束...",
+	// // Toast.LENGTH_SHORT).show();
+	// Intent i = new Intent(TaskScheduService.Action);
+	// i.putExtra("test", "我是phone");
+	// sendBroadcast(i);
+	//
+	// }
+	//
+	// }
+
+	public class MyReceiver extends BroadcastReceiver {
+
+		@Override
+		public void onReceive(Context context, Intent intent) {
+
+			String test = intent.getStringExtra("test");
+			Logger.i(test);
+			
+			String biz = intent.getStringExtra("biz");
+			if("stopSercice".equals(biz))
+			{
+				unregisterReceiver(myReceiver);
+				unregisterReceiver(batteryReceiver);
+				updateConfigRatetaskTimer.cancel();
+				uploadTimer.cancel();
+				stopSelf();
+			}
+
+		}
+
+	}
+
+	/**
+	 * 监听电量广播
+	 * 
+	 * @author TongLee
+	 *
+	 */
+	private class BatteryReceiver extends BroadcastReceiver {
+		@Override
+		public void onReceive(Context context, Intent intent) {
+			int current = intent.getExtras().getInt("level");// 获得当前电量
+			int total = intent.getExtras().getInt("scale");// 获得总电量
+			int percent = current * 100 / total;
+			int voltage = intent.getIntExtra("voltage", 0);
+			int temp = intent.getIntExtra("temperature", 0);
+		
+			battery = percent;
+			SharedPreferencesUtils.setConfigStr(getApplicationContext(), Contant.cachName, "battery", battery+"%");
+			batteryVoltage = voltage;
+			batteryTempl= temp;
+			
+		}
+	}
+
+	private class MyPhoneNetWorkStateListener extends PhoneStateListener
+
+	{
+
+		/*
+		 * Get the Signal strength from the provider, each tiome there is an
+		 * update 从得到的信号强度,每个tiome供应商有更新
+		 */
+
+		@Override
+		public void onSignalStrengthsChanged(SignalStrength signalStrength) {
+			// TODO Auto-generated method stub
+			super.onSignalStrengthsChanged(signalStrength);
+			// final int type = tel.getNetworkType();
+			// StringBuffer sb = new StringBuffer();
+			// String strength = String.valueOf(signalStrength
+			// .getGsmSignalStrength());
+			//
+			//
+			// netWorkStrength = strength;
+
+			super.onSignalStrengthsChanged(signalStrength);
+			String imsi = SystemUtils.getImsiNumber(PhoneInfoService.this);
+			if (null != imsi) {
+				if (imsi.startsWith("46000") || imsi.startsWith("46002")) {
+					simOperatorName = "中国移动";
+					int asu = signalStrength.getGsmSignalStrength();
+					netWorkStrength = asu;
+
+				} else if (imsi.startsWith("46001")) {
+					simOperatorName = "中国联通";
+					int dbm = signalStrength.getCdmaDbm();
+					netWorkStrength = dbm;
+				} else if (imsi.startsWith("46003")) {
+					simOperatorName = "中国电信";
+					int dbm = signalStrength.getEvdoDbm();
+					netWorkStrength = dbm;
+				}
+			}
+
+	
+		}
+
+	};/* End of private Class */
+
+	private void saveLog()
+	{
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				String shell = "logcat";
+		        try
+		        {
+		            Process process = Runtime.getRuntime().exec(shell);
+		            InputStream inputStream = process.getInputStream();
+		            
+		            
+		            
+		            boolean sdCardExist = Environment.getExternalStorageState().equals(
+		                    android.os.Environment.MEDIA_MOUNTED);
+		            File dir = null;
+		            if (sdCardExist)
+		            {
+		                dir = new File(Environment.getExternalStorageDirectory().toString()
+		                        + File.separator + "/ClouldLog/logcatcloud-"+DateUtil.getDateNowString(new Date())+".txt");
+		            
+		                if (!dir.exists())
+		                {
+		                	FileHelper.createFile(dir);
+//		                    dir.createNewFile();
+		                }
+
+		            }
+		            byte[] buffer = new byte[1024];
+		            int bytesLeft = 5 * 1024 * 1024; // Or whatever
+		            try
+		            {
+		                FileOutputStream fos = new FileOutputStream(dir);
+		                try
+		                {
+		                    while (bytesLeft > 0)
+		                    {
+		                        int read = inputStream.read(buffer, 0, Math.min(bytesLeft,
+		                                buffer.length));
+		                        if (read == -1)
+		                        {
+		                            throw new EOFException("Unexpected end of data");
+		                        }
+		                        fos.write(buffer, 0, read);
+		                        bytesLeft -= read;
+		                    }
+		                } finally
+		                {
+		                    fos.close(); // Or use Guava's
+		                                 // Closeables.closeQuietly,
+		                    // or try-with-resources in Java 7
+		                }
+		            } finally
+		            {
+		                inputStream.close();
+		            }
+//		            String logcat = convertStreamToString(inputStream);
+//		            outputFile2SdTest(logcat, "logwyx.txt");
+		        } catch (IOException e)
+		        {
+		            e.printStackTrace();
+		        }
+				
+			}
+		}).start();
+		
+
+	}
+	
+	
+	private void acquireWakeLock() {
+		if (null == mWakeLock) {
+			PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+			mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK
+					| PowerManager.ON_AFTER_RELEASE, "myService");
+			if (null != mWakeLock) {
+				mWakeLock.acquire();
+			}
+		}
+	}
+
+	/**
+	 * onDestroy时，释放设备电源锁
+	 */
+	private void releaseWakeLock() {
+		if (null != mWakeLock) {
+			mWakeLock.release();
+			mWakeLock = null;
+		}
+	}
+}

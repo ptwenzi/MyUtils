@@ -1,0 +1,114 @@
+#
+# A fatal error has been detected by the Java Runtime Environment:
+#
+#  Internal Error (javaClasses.cpp:136), pid=10780, tid=12952
+#  fatal error: Invalid layout of preloaded class
+#
+# JRE version:  (7.0_79-b15) (build )
+# Java VM: Java HotSpot(TM) 64-Bit Server VM (24.79-b02 mixed mode windows-amd64 compressed oops)
+# Failed to write core dump. Minidumps are not enabled by default on client versions of Windows
+#
+# If you would like to submit a bug report, please visit:
+#   http://bugreport.java.com/bugreport/crash.jsp
+#
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x00000000030a2800):  JavaThread "Unknown thread" [_thread_in_vm, id=12952, stack(0x0000000002fa0000,0x00000000030a0000)]
+
+Stack: [0x0000000002fa0000,0x00000000030a0000]
+
+---------------  P R O C E S S  ---------------
+
+Java Threads: ( => current thread )
+
+Other Threads:
+
+=>0x00000000030a2800 (exited) JavaThread "Unknown thread" [_thread_in_vm, id=12952, stack(0x0000000002fa0000,0x00000000030a0000)]
+
+VM state:not at safepoint (not fully initialized)
+
+VM Mutex/Monitor currently owned by a thread: None
+
+GC Heap History (0 events):
+No events
+
+Deoptimization events (0 events):
+No events
+
+Internal exceptions (0 events):
+No events
+
+Events (10 events):
+Event: 0.093 loading class 0x00000000030e7350 done
+Event: 0.094 loading class 0x00000000030e6d50 done
+Event: 0.094 loading class 0x00000000030e6d30
+Event: 0.095 loading class 0x00000000030eeea0
+Event: 0.095 loading class 0x00000000030eeea0 done
+Event: 0.095 loading class 0x00000000030eeed0
+Event: 0.095 loading class 0x00000000030eeed0 done
+Event: 0.095 loading class 0x00000000030eef00
+Event: 0.096 loading class 0x00000000030eef00 done
+Event: 0.096 loading class 0x00000000030e6d30 done
+
+
+Dynamic libraries:
+0x00007ff699c60000 - 0x00007ff699c93000 	C:\Program Files\Java\jdk1.7.0_79\bin\javaw.exe
+0x00007ffdab7f0000 - 0x00007ffdab9c1000 	C:\WINDOWS\SYSTEM32\ntdll.dll
+0x00007ffdaa1b0000 - 0x00007ffdaa25b000 	C:\WINDOWS\System32\KERNEL32.DLL
+0x00007ffda8840000 - 0x00007ffda8a5d000 	C:\WINDOWS\System32\KERNELBASE.dll
+0x00007ffda90c0000 - 0x00007ffda9162000 	C:\WINDOWS\System32\ADVAPI32.dll
+0x00007ffda8fe0000 - 0x00007ffda907e000 	C:\WINDOWS\System32\msvcrt.dll
+0x00007ffda99b0000 - 0x00007ffda9a09000 	C:\WINDOWS\System32\sechost.dll
+0x00007ffda8d60000 - 0x00007ffda8e81000 	C:\WINDOWS\System32\RPCRT4.dll
+0x00007ffda9b80000 - 0x00007ffda9ce5000 	C:\WINDOWS\System32\USER32.dll
+0x00007ffda8a60000 - 0x00007ffda8a7e000 	C:\WINDOWS\System32\win32u.dll
+0x00007ffda9080000 - 0x00007ffda90b4000 	C:\WINDOWS\System32\GDI32.dll
+0x00007ffda8a80000 - 0x00007ffda8c02000 	C:\WINDOWS\System32\gdi32full.dll
+0x00007ffd9ee40000 - 0x00007ffd9f0b9000 	C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.14393.447_none_42191651c6827bb3\COMCTL32.dll
+0x00007ffda9170000 - 0x00007ffda9437000 	C:\WINDOWS\System32\combase.dll
+0x00007ffda8c10000 - 0x00007ffda8d05000 	C:\WINDOWS\System32\ucrtbase.dll
+0x00007ffda7cc0000 - 0x00007ffda7d2a000 	C:\WINDOWS\System32\bcryptPrimitives.dll
+0x00007ffda9880000 - 0x00007ffda98ae000 	C:\WINDOWS\System32\IMM32.DLL
+0x0000000061890000 - 0x0000000061962000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\msvcr100.dll
+0x0000000061af0000 - 0x00000000622c5000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\server\jvm.dll
+0x00007ffdaa2d0000 - 0x00007ffdaa2d8000 	C:\WINDOWS\System32\PSAPI.DLL
+0x00007ffda5c10000 - 0x00007ffda5c33000 	C:\WINDOWS\SYSTEM32\WINMM.dll
+0x00007ffd97610000 - 0x00007ffd97619000 	C:\WINDOWS\SYSTEM32\WSOCK32.dll
+0x00007ffda5bb0000 - 0x00007ffda5bdb000 	C:\WINDOWS\SYSTEM32\WINMMBASE.dll
+0x00007ffda8d10000 - 0x00007ffda8d52000 	C:\WINDOWS\System32\cfgmgr32.dll
+0x00007ffdaa260000 - 0x00007ffdaa2ca000 	C:\WINDOWS\System32\WS2_32.dll
+0x0000000061a00000 - 0x0000000061a0f000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\verify.dll
+0x00000000619d0000 - 0x00000000619f8000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\java.dll
+0x0000000061850000 - 0x0000000061885000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\jdwp.dll
+0x0000000061840000 - 0x0000000061848000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\npt.dll
+0x00000000619b0000 - 0x00000000619c5000 	C:\Program Files\Java\jdk1.7.0_79\jre\bin\zip.dll
+
+VM Arguments:
+jvm_args: -agentlib:jdwp=transport=dt_socket,suspend=y,address=localhost:56338 -Dfile.encoding=UTF-8 -Xbootclasspath:F:\soft\ProgramSoft\android\adt-bundle-windows-x86_64-20140702\sdk\platforms\android-19\android.jar 
+java_command: com.newland.cloudtest.util.KeyConfigUtil
+Launcher Type: SUN_STANDARD
+
+Environment Variables:
+JAVA_HOME=C:\Program Files\Java\jdk1.7.0_79
+CLASSPATH=.;C:\Program Files\Java\jdk1.7.0_79\lib\dt.jar;C:\Program Files\Java\jdk1.7.0_79\lib\tools.jar;
+PATH=C:\Program Files\Java\jdk1.7.0_79\jre\bin;C:/Program Files/Java/jdk1.7.0_79/bin/../jre/bin/server;C:/Program Files/Java/jdk1.7.0_79/bin/../jre/bin;C:/Program Files/Java/jdk1.7.0_79/bin/../jre/lib/amd64;C:\Program Files\Java\jdk1.7.0_79\bin;F:\soft\ProgramSoft\android\adt-bundle-windows-x86_64-20140702\sdk\platform-tools;0X0.000000P-1022ndroid_SDK_HOME\tools;E:\app\wangxj\product\11.2.0\dbhome_1\bin;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\Users\Public\Documents\RAD Studio\9.0\Bpl;C:\PROGRA~2\BOSSFL~1\tuxedo\bin;C:\PROGRA~2\BOSSFL~1;C:\Program Files\Microsoft SQL Server\110\Tools\Binn\;C:\PROGRA~2\WINTES~1;G:\Program Files\MongoDB 2.6 Standard\\bin;C:\Program Files (x86)\Microsoft SQL Server\80\Tools\BINN;C:\Program Files\TortoiseSVN\bin;D:\redis\64bit;C:\Python27X86;C:\Python27X86\Lib;C:\selenium;E:\app\wangxj\product\11.2.0\dbhome_1\bin;C:\Program Files (x86)\ATI Technologies\ATI.ACE\Core-Static;C:\PROGRA~2\BOSSFL~1\tuxedo\bin;C:\PROGRA~2\BOSSFL~1;C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps;;F:\soft\ProgramSoft\android\adt-bundle-windows-x86_64-20140702\eclipse;
+USERNAME=Administrator
+OS=Windows_NT
+PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 37 Stepping 5, GenuineIntel
+
+
+
+---------------  S Y S T E M  ---------------
+
+OS: Windows 8.1 , 64 bit Build 9600 
+
+CPU:total 4 (2 cores per cpu, 2 threads per core) family 6 model 37 stepping 5, cmov, cx8, fxsr, mmx, sse, sse2, sse3, ssse3, sse4.1, sse4.2, popcnt, ht, tsc, tscinvbit
+
+Memory: 4k page, physical 4052844k(1110716k free), swap 10483564k(5876020k free)
+
+vm_info: Java HotSpot(TM) 64-Bit Server VM (24.79-b02) for windows-amd64 JRE (1.7.0_79-b15), built on Apr 10 2015 12:36:16 by "java_re" with unknown MS VC++:1600
+
+time: Thu Dec 08 11:20:05 2016
+elapsed time: 0 seconds
+

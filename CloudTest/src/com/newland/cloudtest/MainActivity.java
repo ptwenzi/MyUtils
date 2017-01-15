@@ -1,0 +1,1029 @@
+package com.newland.cloudtest;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import org.apache.commons.lang.StringUtils;
+import org.xutils.x;
+import org.xutils.common.Callback;
+import org.xutils.ex.DbException;
+import org.xutils.view.annotation.Event;
+import org.xutils.view.annotation.ViewInject;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.ActivityManager;
+import android.app.ActivityManager.RunningTaskInfo;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
+import android.util.DisplayMetrics;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.WindowManager;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.newland.cloudtest.bean.BamNormalModelDetailPara;
+import com.newland.cloudtest.bean.ConfigDb;
+import com.newland.cloudtest.bean.MyXutilsRequestParams;
+import com.newland.cloudtest.bean.QueryBamNormalModelRespContent;
+import com.newland.cloudtest.bean.RequestData;
+import com.newland.cloudtest.bean.ResponeData;
+import com.newland.cloudtest.bean.TaskResultLog;
+import com.newland.cloudtest.bean.Tbusiness4g;
+import com.newland.cloudtest.bean.TestresultDetailPhone;
+import com.newland.cloudtest.broadcastReceiver.SMSBroadcastReceiver;
+import com.newland.cloudtest.service.PhoneInfoService;
+import com.newland.cloudtest.service.SmsService;
+import com.newland.cloudtest.service.TaskScheduService;
+import com.newland.cloudtest.util.Contant;
+import com.newland.cloudtest.util.DateUtil;
+import com.newland.cloudtest.util.FileHelper;
+import com.newland.cloudtest.util.JavaScriptInterface;
+import com.newland.cloudtest.util.SharedPreferencesUtils;
+import com.newland.cloudtest.util.SystemUtils;
+import com.orhanobut.logger.Logger;
+
+/**
+ * 主服务类
+ * 
+ * @author TongLee
+ *
+ */
+public class MainActivity extends MyBaseActivity {
+//	private PhoneInfoService.ServiceBinder mPhoneInfoService;
+//	private TaskScheduService.ServiceBinder mTaskScheduService;
+	private Intent bindTaskScheduServiceIntent;//开启任务调度
+	private Intent bindPhoneInfoServiceIntent;// 启动获取手机信息服务
+	private Intent sMSServiceIntent;//启动获取手机短信服务
+	SMSBroadcastReceiver sMSBroadcastReceiver;//短信的广播接收者
+
+	private String savePath;//将appdriver.jar--->拷贝到手机上保存的路径
+	private TextView testStop ;//测试用的，暂时没用到
+	private WebView webView ;//加载网页控件
+	private TextView battery;//电量   15%
+	private String taskStatueStr="正常";//任务状态
+	private String smsStatueStr="正常";//短信状态
+	private String datauploadStatueStr="正常";//数据上报
+	private int smsNum =0;//短厅总次数
+	private int smsErroNum=0;//短厅失败次数
+	private int appNum=0;//手机App总次数
+	private int appErroNum=0;//手机App失败次数
+	private int fourGNum=0;//4G流量总次数
+	private int fourGErroNum=0;//4G流量失败次数
+	private TextView taskTitleStatue;//任务调度状态显示控件
+	private TextView smsTitleStatue;//短信解析状态显示控件
+	private TextView dataUploadStatue;//数据上报状态显示控件
+	private ScrollView scrollView1;
+	private  TextView total_num;//总次数显示控件
+	private TextView fail_num;//失败次数显示控件
+	private int currentTab=0;//0.短厅 1.app 2.4G流量      显示当前页
+	 long sysDate;
+	 private boolean isStop = false;//服务是否停止的标志位
+	 private TextView smsBtn;//短厅控件
+	 private TextView appBtn;//手机App控件
+	 private TextView flowBtn;//4G流量控件
+	 private boolean isRebootService = false;//重启服务标志位
+	 @ViewInject(R.id.phone_dis)
+	 private TextView phone_dis;//手机归属地控件
+	 @ViewInject(R.id.phone_no)
+	 private TextView phone_no;//手机号码控件
+	 @ViewInject(R.id.phone_statue)
+	 private TextView phone_statue;//手机状态  在线离线等
+//	 @ViewInject(R.id.about)
+	 private View about;//暂时不用
+	 @ViewInject(R.id.log)
+	 private LinearLayout log;//日志布局，暂时被gone掉
+	 private final Timer checkServiceTimer = new Timer(); //检测service是否还在运行
+	 private Context context;
+	 
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.activity_main);
+		x.view().inject(this);
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);   //应用运行时，保持屏幕高亮，不锁屏
+	
+		battery = (TextView) findViewById(R.id.battery);
+		taskTitleStatue = (TextView) findViewById(R.id.taskTitleStatue);
+		smsTitleStatue = (TextView) findViewById(R.id.smsTitleStatue);
+		dataUploadStatue = (TextView) findViewById(R.id.dataUploadStatue);
+		webView = (WebView) findViewById(R.id.webView1);
+		scrollView1 = (ScrollView) findViewById(R.id.scrollView1);
+		total_num = (TextView) findViewById(R.id.total_num);
+		fail_num = (TextView) findViewById(R.id.fail_num);
+		about = findViewById(R.id.about_btn2);
+		smsBtn = (TextView) findViewById(R.id.smsBtn);
+		appBtn = (TextView) findViewById(R.id.appBtn);
+		flowBtn = (TextView) findViewById(R.id.flowBtn);
+		
+		try {
+			initConfigData();
+		} catch (DbException e1) {
+			e1.printStackTrace();
+		}
+		//启动uiautomator自动化测试的框架  Socket服务
+		initScoket();
+		//监听广播服务
+		initSmsBroadcastReceiver();
+		//手机状态信息轮询
+	    startPhoneInfoService();
+	    //手机短信服务
+	    startSMSService();
+	    //手机任务调度服务
+	    startTaskScheduService();
+		
+		 //获取分辨率
+		 getDm();
+		 //初始化数据   正常异常，次数统计
+		 initData();
+		 //echarts 流量使用情况表
+		 initWebView();	
+		 initPhoneNum();
+		 checkServiceTimer.schedule(taskCheckService, 60000L, 10 * 60 * 1000L); 
+		 new JavaScriptInterface().getchartData();
+		 log.setOnClickListener(new OnClickListener() {
+			
+			@Override
+			public void onClick(View v) {
+				Intent intent = new Intent(getApplicationContext(),DebugActivit.class);
+				startActivity(intent);
+				
+			}
+		});
+		 about.setOnClickListener(new OnClickListener() {
+			
+			@Override
+			public void onClick(View v) {
+				Toast.makeText(MainActivity.this, "目前版本号"+SystemUtils.getAppVersionCode(MainActivity.this), 1000).show();
+			}
+		});
+		
+//		 clearLastDate();
+	}
+	
+	@SuppressLint("NewApi")
+	private void moveTaskToFront(){
+		ActivityManager am = (ActivityManager) this.getSystemService(ACTIVITY_SERVICE);
+		List<RunningTaskInfo> recentList = am.getRunningTasks(30);
+		for (RunningTaskInfo runningTaskInfo : recentList) {
+			if(runningTaskInfo.topActivity.getPackageName().equals("com.newland.cloudtest")){
+				am.moveTaskToFront(runningTaskInfo.id, 0);
+				return;
+			}
+		}
+	}
+
+	
+	TimerTask taskCheckService = new TimerTask() {
+		@Override
+		public void run() {
+			try{
+//				Intent intent = new Intent(Intent.ACTION_MAIN);
+//				intent.addCategory(intent.CATEGORY_LAUNCHER);
+//				intent.setClass(getApplicationContext(), MainActivity.class);
+//				intent.setFlags(intent.FLAG_ACTIVITY_NEW_TASK|intent.FLAG_ACTIVITY_CLEAR_TOP);
+//				getApplicationContext().startActivity(intent);
+				
+		    	//手机状态信息轮询
+			    startPhoneInfoService();
+			    //手机短信服务
+			    startSMSService();
+			    //手机任务调度服务
+			    startTaskScheduService();
+			    //将activity激活到前台
+			    //moveTaskToFront();
+	    	} catch(Exception e){
+	    		Logger.v("检测服务是否正常出错：" + e.getMessage());
+	    	}
+		}
+	};
+	
+	/**
+	 * 初始化获取手机号码
+	 */
+	private void initPhoneNum()
+	{
+		if(StringUtils.isEmpty(SystemUtils.getImsiNumber(MainActivity.this)))
+		{
+			phone_no.setText("无SIM卡");
+			phone_dis.setText("");
+		}
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				
+				while (!isStop) {
+					
+					MyXutilsRequestParams params = new MyXutilsRequestParams(Contant.IP+"/rsimcard/getSimInfo");
+					params.setCharset("utf-8");
+					RequestData requestData = new RequestData();
+					Map<String, Object>map = new HashMap<String, Object>();
+					String aa = SystemUtils.getIMEI(getApplicationContext());
+					String bb = SystemUtils.getImsiNumber(MainActivity.this);
+					map.put("imsi", SystemUtils.getImsiNumber(MainActivity.this));
+				
+					Logger.v("imsi"+SystemUtils.getImsiNumber(MainActivity.this));
+					requestData.setData(map);
+					params.addBodyParameter("data", JSON.toJSONString(requestData));
+					Logger.v(JSON.toJSONString(requestData));
+					x.http().post(params, new Callback.CommonCallback<String>() {
+						@Override
+						public void onSuccess(String result) {
+							Logger.v(result);
+							ResponeData responeData = JSON.parseObject(result, ResponeData.class);
+							if (responeData != null && responeData.getCode() ==0) {
+								JSONObject jsonObject =  JSON.parseObject(  JSON.toJSONString(responeData.getData()));
+								String phoneNo = jsonObject.getString("phoneNo");
+								String province = jsonObject.getString("province");
+							
+								if(StringUtils.isNotEmpty(SystemUtils.getImsiNumber(MainActivity.this)))
+								{
+									phone_no.setText(phoneNo);
+									phone_dis.setText("归属地："+province);
+								}
+					
+							}
+							
+							phone_statue.setText("在线");
+						
+						
+						}
+
+						@Override
+						public void onError(Throwable ex, boolean isOnCallback) {
+					
+							Logger.v(ex.getMessage());
+						}
+
+						@Override
+						public void onCancelled(CancelledException cex) {
+							Toast.makeText(x.app(), "cancelled", Toast.LENGTH_LONG).show();
+							Logger.v("cancelled");
+						}
+
+						@Override
+						public void onFinished() {
+
+						}
+					});
+					
+					try {
+						Thread.sleep(1000*60);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+					
+				}
+				
+				
+			}
+		}).start();
+	
+	}
+	
+	/**
+	 * 初始化数据
+	 */
+	private void initData()
+	{
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				
+				try {
+					Thread.sleep(1000*5);
+				} catch (InterruptedException e1) {
+					e1.printStackTrace();
+				}
+				while (!isStop) {
+					
+					boolean isTaskWork =  SystemUtils.isServiceWork(getApplicationContext(), "com.newland.cloudtest.service.TaskScheduService");
+					if(isTaskWork)
+					{
+						taskStatueStr = "正常";
+					}
+					else {
+						taskStatueStr = "异常";
+					}
+					isTaskWork =  SystemUtils.isServiceWork(getApplicationContext(), "com.newland.cloudtest.service.SmsService");
+					if(isTaskWork)
+					{
+						smsStatueStr = "正常";
+					}
+					else {
+						smsStatueStr = "异常";
+					}
+					isTaskWork =  SystemUtils.isServiceWork(getApplicationContext(), "com.newland.cloudtest.service.PhoneInfoService");
+					if(isTaskWork)
+					{
+						datauploadStatueStr = "正常";
+					}
+					else {
+						datauploadStatueStr = "异常";
+					}
+					
+	
+					try {
+						//计算短厅任务结果
+						List<QueryBamNormalModelRespContent> smsList = getTaskLog("12");//获取任务列表
+						if(smsList != null)
+						{
+							smsNum= smsList.size();
+							smsErroNum=0;
+							for (QueryBamNormalModelRespContent queryBamNormalModelRespContent : smsList) {
+//								if (queryBamNormalModelRespContent.getStatue() == 4) {
+//									smsErroNum++;
+//								}
+								TaskResultLog taskResultLog = SystemUtils.getDbManage()
+										.selector(TaskResultLog.class)
+										.where("qbmId", "=", queryBamNormalModelRespContent.getQbmId())
+										.findFirst();
+								if(taskResultLog!=null)
+								{
+									if("失败".equals(taskResultLog.getResult()) || queryBamNormalModelRespContent.getStatue() == 4)
+									{
+										smsErroNum++;
+									}
+									else {
+										//本地成功，上传接口失败    lsc_逻辑有疑问，走不到这一步
+//										if(queryBamNormalModelRespContent.getStatue()!=5 && queryBamNormalModelRespContent.getStatue()!=0)
+										if(queryBamNormalModelRespContent.getStatue()==4)
+										{
+											smsErroNum++;
+										}
+									}
+								}
+							}
+						}
+						//计算app任务结果
+						List<QueryBamNormalModelRespContent> appList = getTaskLog("32");
+								if(smsList != null)
+								{
+									appNum= appList.size();
+									appErroNum=0;
+									for (QueryBamNormalModelRespContent queryBamNormalModelRespContent : appList) {
+//										if (queryBamNormalModelRespContent.getStatue() == 4) {
+//											
+//											appErroNum++;
+//										}
+										//检查是否有超时的任务app
+										TaskResultLog taskResultLog = SystemUtils.getDbManage()
+												.selector(TaskResultLog.class)
+												.where("qbmId", "=", queryBamNormalModelRespContent.getQbmId())
+												.findFirst();
+										if(taskResultLog!=null)
+										{
+											if("失败".equals(taskResultLog.getResult()) || queryBamNormalModelRespContent.getStatue() == 4)
+											{
+												appErroNum++;
+											}
+											else {
+												//本地成功，上传接口失败
+//												if(queryBamNormalModelRespContent.getStatue()!=5 && queryBamNormalModelRespContent.getStatue()!=0)
+												if(queryBamNormalModelRespContent.getStatue()==4)
+												{
+													appErroNum++;
+												}
+											}
+										}
+										
+									}
+								}
+						//计算4g任务结果
+						List<QueryBamNormalModelRespContent> flowList = getTaskLog("9");
+								if(smsList != null)
+								{
+									fourGNum= flowList.size();
+									fourGErroNum=0;
+									for (QueryBamNormalModelRespContent queryBamNormalModelRespContent : flowList) {
+//										if (queryBamNormalModelRespContent.getStatue() == 4) {
+//											fourGErroNum++;
+//										}
+										TaskResultLog taskResultLog = SystemUtils.getDbManage()
+												.selector(TaskResultLog.class)
+												.where("qbmId", "=", queryBamNormalModelRespContent.getQbmId())
+												.findFirst();
+										if(taskResultLog!=null)
+										{
+											if("失败".equals(taskResultLog.getResult()) || queryBamNormalModelRespContent.getStatue() == 4)
+											{
+												fourGErroNum++;
+											}
+											else {
+												//本地成功，上传接口失败
+//												if(queryBamNormalModelRespContent.getStatue()!=5 && queryBamNormalModelRespContent.getStatue()!=0)
+												if(queryBamNormalModelRespContent.getStatue()==4)
+												{
+													fourGErroNum++;
+												}
+											}
+										}
+									}
+								}		
+						
+						
+					} catch (DbException e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}
+					
+					
+					Message msg = new Message();
+					msg.what = 0;
+					handler.sendMessage(msg);
+					
+					
+					try {
+						Thread.sleep(1000*20);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				
+				
+			}
+		}).start();
+		
+		
+	}
+	
+	/**
+	 *重启服务
+	 * @param view
+	 */
+	@SuppressLint("ResourceAsColor")
+	@Event(value = R.id.reboot_service,
+	        type = View.OnClickListener.class/*可选参数, 默认是View.OnClickListener.class*/)
+	private synchronized void rebootService(View view) {
+	
+		   if(!isRebootService)
+		   {
+			    
+			    	new Thread(){
+			    		public synchronized void run(){
+			    			try {
+			    			Message msg = new Message();
+							msg.what = 1;
+							msg.obj ="服务正在重启...";
+							handler.sendMessage(msg);
+							this.sleep(1000);
+			    			isRebootService = true;
+							stopService(bindPhoneInfoServiceIntent);
+							stopService(bindTaskScheduServiceIntent);
+							stopService(sMSServiceIntent);
+							startService(bindPhoneInfoServiceIntent);
+							startService(bindTaskScheduServiceIntent);
+							startService(sMSServiceIntent);
+							isRebootService = false;
+							Message msg1 = new Message();
+							msg1.what = 1;
+							msg1.obj ="服务重启成功...";
+							handler.sendMessage(msg1);
+			    			} catch (Exception e) {
+			    				Message msg1 = new Message();
+								msg1.what = 1;
+								msg1.obj ="服务重启失败...";
+								handler.sendMessage(msg1);
+								isRebootService = false;
+							}
+			    		}	
+			    			
+			    	}.start();
+			    	
+			    	
+				
+			    
+		   }
+
+	}
+	
+	/**
+	 * 短厅tab
+	 * @param view
+	 */
+	@SuppressLint("ResourceAsColor")
+	@Event(value = R.id.smsBtn,
+	        type = View.OnClickListener.class/*可选参数, 默认是View.OnClickListener.class*/)
+	private void onSmsBtnClick(View view) {
+			clearBtnStyle();
+			currentTab = 0;
+			smsBtn.setTextColor(this.getResources().getColor(R.color.fontcolor));
+			smsBtn.setBackgroundResource(R.drawable.tab_content_left_pre);
+			
+			total_num.setText(smsNum+"");
+			fail_num.setText(smsErroNum+"");
+	}
+	/**
+	 * apptab
+	 * @param view
+	 */
+	@SuppressLint("ResourceAsColor")
+	@Event(value = R.id.appBtn,
+	        type = View.OnClickListener.class/*可选参数, 默认是View.OnClickListener.class*/)
+	private void onAppClick(View view) {
+			clearBtnStyle();
+			currentTab = 1;
+			appBtn.setTextColor(this.getResources().getColor(R.color.fontcolor));
+			appBtn.setBackgroundResource(R.color.tab_select);
+			total_num.setText(appNum+"");
+			fail_num.setText(appErroNum+"");
+
+	}
+	/**
+	 * 4G流量tab
+	 * @param view
+	 */
+	@SuppressLint("ResourceAsColor")
+	@Event(value = R.id.flowBtn,
+	        type = View.OnClickListener.class/*可选参数, 默认是View.OnClickListener.class*/)
+	private void onFlowBtnClick(View view) {
+			clearBtnStyle();
+			currentTab = 2;
+			flowBtn.setTextColor(this.getResources().getColor(R.color.fontcolor));
+			flowBtn.setBackgroundResource(R.drawable.tab_content_right_pre);
+			total_num.setText(fourGNum+"");
+			fail_num.setText(fourGErroNum+"");
+
+	}
+	
+	@SuppressLint("ResourceAsColor")
+	private void clearBtnStyle()
+	{
+		smsBtn.setTextColor(this.getResources().getColor(R.color.font_gray));
+		smsBtn.setBackgroundResource(R.drawable.tab_content_left);
+		appBtn.setTextColor(this.getResources().getColor(R.color.font_gray));
+		appBtn.setBackgroundResource(R.color.white);
+		flowBtn.setTextColor(this.getResources().getColor(R.color.font_gray));
+		flowBtn.setBackgroundResource(R.drawable.tab_content_right);
+	}
+	
+	private List<QueryBamNormalModelRespContent> getTaskLog(String chanel) throws DbException
+	{
+//		List<TaskResultLog> smsList =  SystemUtils.getDbManage()
+//				.selector(TaskResultLog.class)
+//				.where("createTime", ">", DateUtil.getStartTime()).and("createTime","<",DateUtil.getEndTime()).and("channel","=",chanel)
+//				.findAll();
+		List<QueryBamNormalModelRespContent> smsList =  SystemUtils.getDbManage()
+				.selector(QueryBamNormalModelRespContent.class)
+				.where("createTime", ">", DateUtil.getStartTime()).and("createTime","<",DateUtil.getEndTime()).and("channel","=",chanel)
+				.findAll();
+		
+		return smsList;
+	}
+	
+	/**
+	 * 初始化浏览器  图表
+	 */
+	private void initWebView()
+	{
+		// 初始化x5
+//		boolean isInitX5 = SharedPreferencesUtils.getConfigBoolean(getApplication(), Contant.cachName, "isInitX5");
+//		QbSdk.preInit(this);
+//		if (!isInitX5) {
+//
+//			preinitX5WebCore();
+//			SharedPreferencesUtils.setConfigBoolean(getApplication(), Contant.cachName, "isInitX5",true);
+//		}
+//	  
+//		QbSdk.preInit(this);
+//		preinitX5WebCore();
+//		QbSdk.allowThirdPartyAppDownload(true);
+
+
+		webView.loadUrl("file:///android_asset/CloudTest/test2.html");
+		//启用支持javascript
+		webView.addJavascriptInterface(new JavaScriptInterface(), "Android");
+		WebSettings settings = webView.getSettings();
+		settings.setJavaScriptEnabled(true);
+		//webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+		
+	}
+	
+
+
+	/**
+	 * X5内核在使用preinit接口之后，对于首次安装首次加载没有效果
+	 * 实际上，X5webview的preinit接口只是降低了webview的冷启动时间；
+	 * 因此，现阶段要想做到首次安装首次加载X5内核，必须要让X5内核提前获取到内核的加载条件
+	 */
+//	private void preinitX5WebCore() {
+//		if (!QbSdk.isTbsCoreInited()) {// preinit只需要调用一次，如果已经完成了初始化，那么就直接构造view
+//			QbSdk.preInit(MainActivity.this, myCallback);// 设置X5初始化完成的回调接口
+//															// 第三个参数为true：如果首次加载失败则继续尝试加载；
+//		}
+//	}
+//
+//	private PreInitCallback myCallback = new QbSdk.PreInitCallback() {
+//
+//		@Override
+//		public void onViewInitFinished() {// 当X5webview 初始化结束后的回调
+//			new WebView(MainActivity.this);
+//		}
+//
+//		@Override
+//		public void onCoreInitFinished() {
+//		}
+//	};
+	
+	/**
+	 * 获取分辨率信息
+	 */
+	private void getDm()
+	{
+		
+	    DisplayMetrics dm = new DisplayMetrics();  
+	     getWindowManager().getDefaultDisplay().getMetrics(dm);  
+        int width=(int) (dm.widthPixels*dm.density);   
+        int height=(int) (dm.heightPixels*dm.density);
+        SharedPreferencesUtils.setConfigStr(getApplicationContext(), Contant.cachName, "density", width+"*"+height);
+	}
+	
+	
+	
+
+	/**
+	 * lsc_20161028
+	 * 
+	 * 停止之前的进程  Android自动化测试，启动assets目录下面的appdriver.jar包运行起来（需要拷贝到sd卡上才可以）
+	 */
+	private void initScoket()
+	{
+		 SystemUtils.stopProcess("uiautomator");//停止之前的进程  Android自动化测试（UiAutomator）简要介绍  http://blog.csdn.net/chenbang110/article/details/23371597
+		 copyApkFromAssets(this, "appdriver.jar");
+		
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+		
+				 //启动app socket  
+				 //AppDriverEntry该类必须去继承UiAutomatorTestCase---->自动去调用setUp();启动Socket服务
+				 boolean  isStarted=SystemUtils.execShellCmd("uiautomator runtest " + savePath + " -c com.newland.appdriver.AppDriverEntry");
+				 if(isStarted)
+				 {
+					 Logger.v("启动成功");
+				 }
+				 else {
+					 Logger.v("启动失败");
+				}
+				
+			}
+		}).start();
+
+	}
+	
+
+	
+	/**
+     * 将assets文件夹下/db的本地库拷贝到/data/data/下
+     *
+     * @param context
+     * @param tab_name
+     */
+    public static void copyDbFile(Context context, String tab_name) {
+        InputStream in = null;
+        FileOutputStream out = null;
+        /**data/data/路径*/
+        String path = "/data/local/tmp/";
+        File file = new File(path + "/" + tab_name);
+
+       try {
+
+           //创建文件夹
+            File file_ = new File(path);
+            if (!file_.exists())
+                file_.mkdirs();
+
+           if (file.exists())//删除已经存在的
+                file.deleteOnExit();
+            //创建新的文件
+            if (!file.exists())
+                file.createNewFile();
+
+           in = context.getAssets().open("appdriver.jar"); // 从assets目录下复制
+            out = new FileOutputStream(file);
+            int length = -1;
+            byte[] buf = new byte[1024];
+            while ((length = in.read(buf)) != -1) {
+                out.write(buf, 0, length);
+            }
+            out.flush();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (in != null) in.close();
+                if (out != null) out.close();
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+        }
+
+   }
+
+    
+	
+	public void testStop(View view)
+	{
+		 
+		
+				
+	}
+	
+
+	
+	
+	/**
+	 * 初始化配置数据 
+	 * ConfigDb在后面的服务中会对它进行建表保存
+	 * @throws DbException 
+	 */
+	private void initConfigData() throws DbException
+	{
+		
+		ConfigDb configDb = SystemUtils.getDbManage()
+				.selector(ConfigDb.class)
+				.where("key", "=", "updatePhoneInfoRate")
+				.findFirst();
+		if(configDb!=null && configDb.getValue()!=0)
+		{
+			Contant.updatePhoneInfoRate = configDb.getValue();
+		}
+		
+		
+		configDb = SystemUtils.getDbManage()
+				.selector(ConfigDb.class)
+				.where("key", "=", "task4GTimeOut")
+				.findFirst();
+		if(configDb!=null && configDb.getValue()!=0)
+		{
+			Contant.task4GTimeOut = configDb.getValue();
+		}
+		
+		
+		configDb = SystemUtils.getDbManage()
+				.selector(ConfigDb.class)
+				.where("key", "=", "taskSmsTimeOut")
+				.findFirst();
+		if(configDb!=null && configDb.getValue()!=0){
+			Contant.taskSmsTimeOut = configDb.getValue();
+		}
+	
+		
+		configDb = SystemUtils.getDbManage()
+				.selector(ConfigDb.class)
+				.where("key", "=", "taskSmsTimeOut")
+				.findFirst();
+		if(configDb!=null && configDb.getValue()!=0)
+		{
+			Contant.taskSmsTimeOut = configDb.getValue();
+		}
+		
+		configDb = SystemUtils.getDbManage()
+				.selector(ConfigDb.class)
+				.where("key", "=", "taskAppTimeOut")
+				.findFirst();
+		if(configDb!=null && configDb.getValue()!=0)
+		{
+			Contant.taskAppTimeOut = configDb.getValue();
+		}
+		
+		configDb = SystemUtils.getDbManage()
+				.selector(ConfigDb.class)
+				.where("key", "=", "taskResultUploadTimeOut")
+				.findFirst();
+		if(configDb!=null && configDb.getValue()!=0)
+		{
+			Contant.taskResultUploadTimeOut = configDb.getValue();
+		}
+		
+		
+	}
+	
+
+	public boolean copyApkFromAssets(Context context, String fileName) {
+		boolean copyIsFinish = false;
+		try {
+			InputStream is = context.getAssets().open(fileName);
+
+			File distDir = this.getDir("myjars", Activity.MODE_PRIVATE);
+			File distFile = new File(distDir.getAbsolutePath() + File.separator
+					+ fileName);
+			if (distFile.exists()) {
+				distFile.delete();
+			}
+			if (!distFile.exists())
+				distFile.createNewFile();
+
+			FileOutputStream fos = new FileOutputStream(distFile);
+			byte[] temp = new byte[1024];
+			int i = 0;
+			while ((i = is.read(temp)) > 0) {
+				fos.write(temp, 0, i);
+			}
+			fos.flush();// 刷新缓冲区
+			fos.close();
+			is.close();
+
+			savePath = distDir.getAbsolutePath() + File.separator + fileName;
+			copyIsFinish = true;
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return copyIsFinish;
+	}
+
+
+
+	/**
+	 * 接收短信广播
+	 */
+	private void initSmsBroadcastReceiver() {
+		 sMSBroadcastReceiver = new SMSBroadcastReceiver();
+		IntentFilter filter = new IntentFilter();
+		filter.addAction("android.provider.Telephony.SMS_RECEIVED");
+		this.registerReceiver(sMSBroadcastReceiver, filter);
+
+	}
+
+	@Override
+	protected void onDestroy() {
+		// TODO Auto-generated method stub
+		super.onDestroy();
+		isStop = true;
+		
+		unregisterReceiver(sMSBroadcastReceiver);
+
+	}
+
+
+
+	/*
+	 * 启动获取手机信息服务
+	 */
+	private void startPhoneInfoService() {
+		bindPhoneInfoServiceIntent = new Intent(MainActivity.this,
+				PhoneInfoService.class);
+//		bindService(bindPhoneInfoServiceIntent, mPhoneInfoServiceConn,
+//				BIND_AUTO_CREATE);
+		if(!SystemUtils.isServiceWork(this, "com.newland.cloudtest.service.PhoneInfoService"))
+		{
+			startService(bindPhoneInfoServiceIntent);
+		}
+		
+		
+
+	}
+
+
+	/*
+	 * 开启任务调度
+	 */
+	private void startTaskScheduService() {
+		bindTaskScheduServiceIntent = new Intent(MainActivity.this,
+				TaskScheduService.class);
+//		bindService(bindTaskScheduServiceIntent, mTaskScheduServiceConn,
+//				BIND_AUTO_CREATE);
+		if(!SystemUtils.isServiceWork(this, "com.newland.cloudtest.service.TaskScheduService"))
+		{
+			startService(bindTaskScheduServiceIntent);
+		}
+	}
+
+
+	/*
+	 * 启动获取手机短信服务
+	 */
+	private void startSMSService() {
+		sMSServiceIntent = new Intent(MainActivity.this,
+				SmsService.class);
+		if(!SystemUtils.isServiceWork(this, "com.newland.cloudtest.service.SmsService"))
+		{
+			startService(sMSServiceIntent);
+		}
+	}
+	
+
+	private Handler handler = new Handler() {
+		@Override
+		public void handleMessage(Message msg) {
+			// TODO Auto-generated method stub
+			super.handleMessage(msg);
+			switch (msg.what) {
+			case 0:
+				String  batteryStr = SharedPreferencesUtils.getConfigStr(getApplicationContext(), Contant.cachName, "battery");
+				if (batteryStr != null) {
+					battery.setText(batteryStr);
+				}
+				if("异常".equals(taskStatueStr))
+				{
+					taskTitleStatue.setTextColor(getResources().getColor(R.color.fontcolor));
+				}
+				if("异常".equals(smsStatueStr))
+				{
+					smsTitleStatue.setTextColor(getResources().getColor(R.color.fontcolor));
+				}
+				if("异常".equals(datauploadStatueStr))
+				{
+					dataUploadStatue.setTextColor(getResources().getColor(R.color.fontcolor));
+				}
+				taskTitleStatue.setText(taskStatueStr);
+				smsTitleStatue.setText(smsStatueStr);
+				dataUploadStatue.setText(datauploadStatueStr);
+				if(currentTab == 0)
+				{
+					
+					
+					total_num.setText(smsNum+"");
+					fail_num.setText(smsErroNum+"");
+				}
+				initWebView();
+				
+				break;
+			//吐司
+			case 1:
+				Toast toast2= Toast.makeText(getApplicationContext(), 
+						(String)msg.obj, Toast.LENGTH_LONG);  
+						//放在左上角。如果你想往右边移动，将第二个参数设为>0；往下移动，增大第三个参数；后两个参数都只得像素
+						toast2.setGravity(Gravity.CENTER, 0, 0);
+						toast2.show();
+				break;
+			default:
+				break;
+			}
+		}
+
+	};
+	
+	
+	@Override
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+		if (keyCode == KeyEvent.KEYCODE_BACK) {
+			moveTaskToBack(false);
+			return true;
+		}
+		return super.onKeyDown(keyCode, event);
+	}
+
+	public void clearLastDate()
+	{
+		//获取前日数据
+		Calendar   cal   =   Calendar.getInstance();
+		 cal.add(Calendar.DATE,   -2);
+		 String yesterday = new SimpleDateFormat( "yyyy-MM-dd").format(cal.getTime());
+		 try {
+//			QueryBamNormalModelRespContent queryBamNormalModelRespContent = SystemUtils.getDbManage()
+//						.selector(QueryBamNormalModelRespContent.class)
+//						.where("createTime", "<",cal.getTime())
+//						.findAll();
+			SystemUtils.getDbManage().delete(QueryBamNormalModelRespContent.class, null);
+			SystemUtils.getDbManage().delete(BamNormalModelDetailPara.class, null);
+			SystemUtils.getDbManage().delete(TaskResultLog.class, null);
+			SystemUtils.getDbManage().delete(Tbusiness4g.class,null);
+			SystemUtils.getDbManage().delete(TestresultDetailPhone.class, null);
+		} catch (DbException e) {
+			e.printStackTrace();
+		}
+		 
+		 
+		 String LogPath =   Environment.getExternalStorageDirectory().toString()+ File.separator + "/ClouldLog/";
+		 File[] fList=new File(LogPath).listFiles(); 
+		 Long deleteTime = System.currentTimeMillis()-1000*60*60*24 *5;
+		 for(int j=0;j<fList.length;j++) 
+          { 
+				Long modifyTime =  fList[j].lastModified();
+				if(modifyTime<deleteTime)  //小于1天前删掉
+				{
+					FileHelper.deleteFile( fList[j].getAbsolutePath());
+				}
+				
+          } 		 
+	}
+	
+	
+}
